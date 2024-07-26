@@ -1,0 +1,83 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+- group: Secrets
+
+stages:
+- stage: TerraformTasks
+  displayName: 'Terraform Tasks'
+  jobs:
+  - job: TerraformInitValidatePlanApply
+    displayName: 'Terraform Init, Validate, Plan, and Apply'
+    steps:
+    - task: TerraformInstaller@0
+      inputs:
+        terraformVersion: 'latest'
+
+    - script: |
+        echo "machine dev.azure.com login boubnanehamza password $DEVOPS_PAT" > ~/.netrc
+        echo "Configuring Git Authentication with .netrc"
+      displayName: 'Configure Git Authentication with .netrc'
+      env:
+        DEVOPS_PAT: $(DEVOPS_PAT)
+
+    - task: AzureCLI@2
+      displayName: "Configure Azure CLI and Export SPN Variables"
+      inputs:
+        azureSubscription: 'AzureARM'  # Adjust according to your subscription name
+        scriptType: bash
+        addSpnToEnvironment: true
+        scriptLocation: inlineScript
+        inlineScript: |
+          echo "Exporting Azure SPN environment variables"
+          export ARM_CLIENT_ID=$servicePrincipalId
+          export ARM_CLIENT_SECRET=$servicePrincipalKey
+          export ARM_TENANT_ID=$tenantId
+          export ARM_SUBSCRIPTION_ID=$subscriptionId
+
+    - script: |
+        echo "Initializing Terraform"
+        terraform init
+        terraform validate
+      displayName: 'Terraform Init & Validate'
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+    - script: |
+        echo "Planning Terraform"
+        terraform plan -out=tfplan
+      displayName: 'Terraform Plan'
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+
+    - script: |
+        echo "Applying Terraform"
+        terraform destroy -auto-approve
+      displayName: 'Terraform Apply'
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        DEVOPS_PAT: $(DEVOPS_PAT)
+
+    - script: |
+        echo "Get AKS Credentials"
+        az aks get-credentials --resource-group $(terraform output -raw azurerm_kubernetes_cluster_node_resource_group) --name $(terraform output -raw azurerm_kubernetes_cluster_id) --file $(Build.ArtifactStagingDirectory)/kubeconfig
+      displayName: 'Get AKS Credentials'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Kubeconfig'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/kubeconfig'
+        ArtifactName: 'kubeconfig'
