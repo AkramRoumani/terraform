@@ -62,7 +62,7 @@ stages:
 
     - script: |
         echo "Applying Terraform"
-        terraform destroy -auto-approve
+        terraform apply -auto-approve
       displayName: 'Terraform Apply'
       env:
         ARM_CLIENT_ID: $(ARM_CLIENT_ID)
@@ -71,13 +71,3 @@ stages:
         ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
         DEVOPS_PAT: $(DEVOPS_PAT)
 
-    - script: |
-        echo "Get AKS Credentials"
-        az aks get-credentials --resource-group $(terraform output -raw azurerm_kubernetes_cluster_node_resource_group) --name $(terraform output -raw azurerm_kubernetes_cluster_id) --file $(Build.ArtifactStagingDirectory)/kubeconfig
-      displayName: 'Get AKS Credentials'
-
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Kubeconfig'
-      inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)/kubeconfig'
-        ArtifactName: 'kubeconfig'
